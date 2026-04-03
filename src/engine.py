@@ -1,10 +1,76 @@
 from players import Player
 from teams import Team
 from match_state import MatchState
+import pressing
+import chance_model
 import fatigue
 import random
 import utils
 import yaml
+
+
+def run_match_segment(mstate, tsteps_segment, pressing_intensity, config):
+    """
+    Run a segment of the match (regular time or overtime) for a given number of timesteps.
+
+    Parameters
+    ----------
+    mstate : MatchState
+        The current match state object (holds teams, players, score, possession, etc.)
+    tsteps_segment : int
+        Number of timesteps to run in this segment
+    pressing_intensity : float
+        Current pressing intensity level
+    config : dict
+        Configuration dictionary (e.g., fatigue_threshold)
+    """
+    time_per_step = (90*60) / tsteps_segment  # timestep in seconds
+    halftime_flag = False  # Only relevant if running first 90 minutes
+
+    for tstep in range(tsteps_segment):
+        # 1. Update fatigue
+        for team in mstate.teams:
+            for player in team.playing:
+                delta_fatigue = fatigue.calculate_fatigue(player, pressing_intensity)
+                player.update_fatigue(delta_fatigue)
+                player.fatigue = min(player.fatigue, 1.0)
+
+        # 2. Handle substitutions
+        for team in mstate.teams:
+            for player in team.playing:
+                if player.fatigue > config["fatigue_threshold"] and len(team.sidelines) > 0:
+                    sub_in = random.choice(team.sidelines)
+                    team.swap_player(player, sub_in)
+                    player.swap_player()
+                    sub_in.swap_player()
+
+        # 3. Update match events
+        n_presses = pressing.press(mstate)
+        for press_step in range(n_presses):
+            offensive_moves = pressing.press_info(mstate)
+            if pressing.should_possession_change(mstate.possession):
+                mstate.update_possession(not mstate.possession)  # flip boolean possession
+
+        scoring_team = mstate.teams[mstate.possession]
+        if chance_model.attempt_shot(scoring_team):
+            mstate.score[mstate.possession] += 1
+
+        # 4. Update match time
+        mstate.time += time_per_step
+
+        # 5. Optional logging
+        utils.log_match_state(mstate)
+
+        # 6. Half-time logic
+        if mstate.time > 90*60/2 and not halftime_flag:
+            halftime_flag = True
+            for team in mstate.teams:
+                for player in team.players:
+                    delta_fatigue = fatigue.calculate_fatigue(player, pressing_intensity)
+                    player.update_fatigue(delta_fatigue)
+
+# Main
+# =============================
 
 # config stuff
 # -----------------------------
@@ -32,44 +98,12 @@ team2 = Team(players_team2)
 teams = [team1, team2]
 mstate = MatchState(teams) # holds all information on teams and players within those teams
 
-# time step loop
-# -----------------------------
-max_time = 90*60 # Game is 90 minutes and we use seconds
-time_per_step = max_time / tsteps # timestep in seconds
+# time step loop. Runs the whole game
+# -----------------------------------
+run_match_segment(mstate, tsteps, pressing_intensity, config)
 
-# Decide kickoff
-mstate.kickoff() # gives possession attribute = True to one of the teams and False to other
-
-for tstep in range(tsteps):
-    # 1. Update fatigue of players based on current actions/defensive choices
-    for team in mstate.teams:
-        for player in team.playing:  # only update fatigue for players on the field
-            delta_fatigue = fatigue.calculate_fatigue(player, pressing_intensity)
-            delta_fatigue = min(delta_fatigue, 1.0)
-            player.update_fatigue(delta_fatigue)  # cap fatigue at 1.0
-    
-    # 2. Handle substitutions if players are fatigued
-    for team in mstate.teams:
-        for player in team.playing:
-            if player.fatigue > config["fatigue_threshold"] and len(team.sidelines) > 0:
-                # Pick a random sideline player to swap in
-                sub_in = random.choice(team.sidelines)
-                team.swap_player(player, sub_in)
-                player.swap_player()  # update sideline status
-                sub_in.swap_player()  # update sideline status
-    
-    # 3. Update match events (possession, shots, scoring)
-    # Possession can change based on defensive choices
-    if utils.should_change_possession(mstate.possession):
-        mstate.update_possession(1 - mstate.possession)
-    
-    # Attempt a shot if in possession
-    scoring_team = mstate.teams[mstate.possession]
-    if utils.attempt_shot(scoring_team):
-        mstate.score[mstate.possession] += 1
-    
-    # 4. Update the match time
-    mstate.time += time_per_step
-
-    # Optional: log match state
-    utils.log_match_state(mstate)
+# Run overtime
+# ------------
+print("\n=========\nOvertime.\n=========\n")
+while mstate.score[0] == mstate.score[1]:
+    run_match_segment(mstate, tsteps, pressing_intensity, config)

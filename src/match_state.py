@@ -23,16 +23,24 @@ class MatchState:
         self.possession = kickoff_winner
 
 
-    def update_possession(self, team):
+    def update_possession(self):
         """Changes and updates the team with possession."""
         if self.possession == 0: # Changing from team 1 to 2
             self.possession = 1
-            self.team[1].possession = True
-            self.team[0].possession = False
+            self.teams[1].possession = True
+            self.teams[0].possession = False
         elif self.possession == 1: # changing from team 2 to 1
             self.possession = 0
-            self.team[0].possession = True
-            self.team[1].possession = False
+            self.teams[0].possession = True
+            self.teams[1].possession = False
         else:
             raise ValueError("The ball's possession was not in team 1 or 2.")
+
+    def update_score(self, scoring_team):
+        if scoring_team == self.teams[0]:
+            self.teams[0].score += 1
+        elif scoring_team == self.teams[1]:
+            self.teams[1].score += 1
+        else:
+            raise ValueError(f"A dog named {scoring_team} ran onto the field and scored. He is not a valid team!")
 
