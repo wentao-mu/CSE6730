@@ -1,0 +1,9 @@
+teams:
+  team1:
+    num_players: 20
+  team2:
+    num_players: 20
+
+pressing_intensity: 1
+
+timesteps: 900 # Soccer/football game is 90 minutes long
