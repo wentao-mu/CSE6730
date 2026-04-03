@@ -17,6 +17,13 @@ class Player:
         self.position = position
         self.location = location
         self.sideline = sideline
+        self.possession = False
+
+    def __repr__(self):
+        return (
+            f"Player(name={self.name!r}, team={self.team}, fatigue={self.fatigue:.3f}, "
+            f"sideline={self.sideline})"
+        )
 
     def swap_player(self):
         """Called if the player starts playing or stops playing."""
@@ -28,5 +35,10 @@ class Player:
         ball back)."""
         self.fatigue += delta_fatigue
 
-    def update_possession(self):
+    def update_possession(self, has_possession=None):
         """Updates the possession of this player. Used by match_state.update(possession)."""
+        if has_possession is None:
+            self.possession = not self.possession
+            return
+
+        self.possession = bool(has_possession)

@@ -1,109 +1,163 @@
-from players import Player
-from teams import Team
-from match_state import MatchState
-import pressing
-import chance_model
-import fatigue
+"""Simulation engine utilities with pressing and fatigue hooks wired in."""
+
+from __future__ import annotations
+
+from pathlib import Path
 import random
-import utils
-import yaml
+
+try:
+    from .match_state import MatchState
+    from .players import Player
+    from .teams import Team
+    from . import pressing
+except ImportError:  # pragma: no cover - allows direct execution from src/
+    from match_state import MatchState
+    from players import Player
+    from teams import Team
+    import pressing
 
 
-def run_match_segment(mstate, tsteps_segment, pressing_intensity, config):
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "default_params.yaml"
+
+
+def load_config(config_path=None):
+    """Load YAML configuration for the simulator."""
+    import yaml
+
+    path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+    with path.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def build_default_match_state(config):
+    """Create a minimal two-team match state from config."""
+    starters = int(config.get("team", {}).get("starters", 11))
+    teams = []
+
+    for team_index, key in enumerate(("team1", "team2")):
+        team_config = config.get("teams", {}).get(key, {})
+        num_players = int(team_config.get("num_players", 20))
+        team_name = team_config.get("name", f"Team {team_index + 1}")
+        pressing_level = team_config.get("pressing_level", "medium")
+        squad = [
+            Player(
+                f"{team_name.replace(' ', '_')}_{player_index + 1}",
+                team=team_index,
+                sideline=player_index >= starters,
+            )
+            for player_index in range(num_players)
+        ]
+        teams.append(
+            Team(
+                squad,
+                name=team_name,
+                pressing_level=pressing_level,
+                starters=starters,
+            )
+        )
+
+    return MatchState(teams)
+
+
+def default_transition(match_state, config, rng):
+    """Simple possession model used until calibrated transitions are integrated."""
+    defending_team = match_state.teams[1 - match_state.possession]
+    engine_params = config.get("engine", {})
+    base_turnover_probability = float(engine_params.get("base_turnover_probability", 0.12))
+    turnover_probability = min(
+        0.95,
+        base_turnover_probability * pressing.turnover_modifier(defending_team, config),
+    )
+
+    if rng.random() < turnover_probability:
+        previous_team = match_state.possession
+        match_state.switch_possession()
+        return {
+            "type": "turnover",
+            "from_team": previous_team,
+            "to_team": match_state.possession,
+        }
+
+    return {"type": "keep_possession", "team": match_state.possession}
+
+
+def step(match_state, config, rng=None, transition_callback=None, seconds_per_step=60.0):
+    """Advance the simulation by one discrete possession step."""
+    rng = rng or random.Random()
+    transition_callback = transition_callback or default_transition
+
+    if match_state.possession is None:
+        match_state.kickoff(rng)
+
+    for team in match_state.teams:
+        team.accumulate_fatigue(config)
+
+    event = transition_callback(match_state, config, rng)
+    match_state.advance_time(seconds_per_step)
+    return match_state.log_event(
+        event["type"],
+        step=len(match_state.event_log),
+        minute=match_state.minute,
+        fatigue=match_state.fatigue_levels.copy(),
+        possession=match_state.possession,
+        **{key: value for key, value in event.items() if key != "type"},
+    )
+
+
+def run_match_segment(match_state, tsteps_segment, config, rng=None, transition_callback=None):
     """
-    Run a segment of the match (regular time or overtime) for a given number of timesteps.
-
-    Parameters
-    ----------
-    mstate : MatchState
-        The current match state object (holds teams, players, score, possession, etc.)
-    tsteps_segment : int
-        Number of timesteps to run in this segment
-    pressing_intensity : float
-        Current pressing intensity level
-    config : dict
-        Configuration dictionary (e.g., fatigue_threshold)
+    Run a segment of the match (for now, regulation time) for a given number of steps.
     """
-    time_per_step = (90*60) / tsteps_segment  # timestep in seconds
-    halftime_flag = False  # Only relevant if running first 90 minutes
+    if tsteps_segment <= 0:
+        raise ValueError("tsteps_segment must be positive.")
+
+    rng = rng or random.Random()
+    match_minutes = float(config.get("match", {}).get("regulation_minutes", 90))
+    seconds_per_step = (match_minutes * 60.0) / tsteps_segment
+    halftime_step = tsteps_segment // 2
+    events = []
+
+    if match_state.possession is None:
+        match_state.kickoff(rng)
 
     for tstep in range(tsteps_segment):
-        # 1. Update fatigue
-        for team in mstate.teams:
-            for player in team.playing:
-                delta_fatigue = fatigue.calculate_fatigue(player, pressing_intensity)
-                player.update_fatigue(delta_fatigue)
-                player.fatigue = min(player.fatigue, 1.0)
+        if tstep == halftime_step:
+            for team in match_state.teams:
+                team.accumulate_fatigue(config, halftime=True)
+            match_state.log_event(
+                "halftime",
+                step=tstep,
+                minute=match_state.minute,
+                fatigue=match_state.fatigue_levels.copy(),
+            )
 
-        # 2. Handle substitutions (This will change)
-        for team in mstate.teams:
-            for player in team.playing:
-                if player.fatigue > config["fatigue_threshold"] and len(team.sidelines) > 0:
-                    sub_in = random.choice(team.sidelines)
-                    team.swap_player(player, sub_in)
-                    player.swap_player()
-                    sub_in.swap_player()
+        event = step(
+            match_state,
+            config,
+            rng=rng,
+            transition_callback=transition_callback,
+            seconds_per_step=seconds_per_step,
+        )
+        events.append(event)
 
-        # 3. Update match events
-        n_presses = pressing.press(mstate)
-        for press_step in range(n_presses):
-            if pressing.should_possession_change(mstate): # Not sure what parameters are needed. mstate is a placeholder
-                prev_player, new_player = pressing.change_possession(mstate) # player who previously had possession, and player who now has possession respectively
-                mstate.update_possession(prev_player, new_player)  # flip boolean possession
+    return events
 
-        scoring_team = mstate.teams[mstate.possession]
-        if chance_model.attempt_shot(scoring_team):
-            mstate.score[mstate.possession] += 1
 
-        # 4. Update match time
-        mstate.time += time_per_step
+def run_match(config=None, rng=None, transition_callback=None):
+    """Run one regulation match and return the final MatchState."""
+    config = config or load_config()
+    match_state = build_default_match_state(config)
+    run_match_segment(
+        match_state,
+        int(config.get("match", {}).get("regulation_steps", config.get("timesteps", 90))),
+        config,
+        rng=rng,
+        transition_callback=transition_callback,
+    )
+    return match_state
 
-        # 5. Optional logging
-        utils.log_match_state(mstate)
 
-        # 6. Half-time logic
-        if mstate.time > 90*60/2 and not halftime_flag:
-            halftime_flag = True
-            for team in mstate.teams:
-                for player in team.players:
-                    delta_fatigue = fatigue.calculate_fatigue(player, pressing_intensity)
-                    player.update_fatigue(delta_fatigue)
-
-# Main
-# =============================
-
-# config stuff
-# -----------------------------
-with open("config.yaml") as f:
-    config = yaml.safe_load(f)
-
-num_players_team1 = config["teams"]["team1"]["num_players"]
-num_players_team2 = config["teams"]["team2"]["num_players"]
-
-pressing_intensity = config["pressing_intensity"]
-tsteps = config["timesteps"]
-
-# initialization
-# ------------------------------
-# The Player class splits them into a field/sideline group within __init__
-players_team1 = [Player(f"Team1_Player_{i}", team=0, sideline=True) for i in range(num_players_team1)]
-players_team2 = [Player(f"Team2_Player_{i}", team=1, sideline=True) for i in range(num_players_team2)]
-
-print(f"Team 1:\n{players_team1}")
-print(f"Team 2:\nplayers_team2")
-
-# Add players to team
-team1 = Team(players_team1)
-team2 = Team(players_team2)
-teams = [team1, team2]
-mstate = MatchState(teams) # holds all information on teams and players within those teams
-
-# time step loop. Runs the whole game
-# -----------------------------------
-run_match_segment(mstate, tsteps, pressing_intensity, config)
-
-# Run overtime
-# ------------
-print("\n=========\nOvertime.\n=========\n")
-while mstate.score[0] == mstate.score[1]:
-    run_match_segment(mstate, tsteps, pressing_intensity, config)
+if __name__ == "__main__":
+    state = run_match()
+    print(f"Final score: {state.score}")
+    print(f"Final fatigue: {state.fatigue_levels}")

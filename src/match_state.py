@@ -1,4 +1,7 @@
-from teams import Team
+"""Shared match snapshot that the simulation engine mutates over time."""
+
+from __future__ import annotations
+
 import random
 
 class MatchState:
@@ -11,44 +14,89 @@ class MatchState:
     ----------
     
     """
-    def __init__(self, teams):
-        self.teams = teams # [team1, team2]
-        self.score = [teams[0].score, teams[1].score] # team 1's score, then team 2's score
-        self.time = 0 # Clock starts at 0. Measured in seconds. Game is 90 minutes long, so the match stops when self.time = 5400 seconds
-        self.possession = None # Must be updated at kickoff
+    def __init__(self, teams, zone="midfield", possession=None):
+        if len(teams) != 2:
+            raise ValueError("MatchState currently supports exactly two teams.")
+
+        self.teams = list(teams)
+        self.score = [self.teams[0].score, self.teams[1].score]
+        self.time = 0.0
+        self.zone = zone
+        self.possession = possession
+        self.event_log = []
+
+        if self.possession is not None:
+            self._sync_possession_flags()
+
+    @property
+    def minute(self):
+        return self.time / 60.0
+
+    @property
+    def fatigue_levels(self):
+        return [team.fatigue for team in self.teams]
         
-    def kickoff(self):
+    def kickoff(self, rng=None):
         """Decides the winner of the kickoff to determine initial possession."""
-        kickoff_winner = random([0,1]) # 0 for team 0, 1 for team 1
+        rng = rng or random
+        kickoff_winner = rng.choice([0, 1])
         self.possession = kickoff_winner
+        self._sync_possession_flags()
 
+    def _sync_possession_flags(self):
+        for index, team in enumerate(self.teams):
+            team.possession = index == self.possession
 
-    def update_possession(self, prev_player, new_player):
+    def update_possession(self, prev_player=None, new_player=None):
         """
         Changes and updates the team with possession based on player possession.
 
         Parameters
         ----------
-        prev_player : Player
-            The Player instance that previously had possession of the soccer ball.
-        new_player : Player
-            The Player instance that now has possession of the ball.
+        prev_player : Player | int | None
+            The previous ball holder or previous team index.
+        new_player : Player | int | None
+            The new ball holder or the new team index.
         """
-        prev_player.possession = False
-        new_player.possession = True
+        if self.possession is None and new_player is None:
+            raise ValueError("Cannot infer a possession change before kickoff.")
 
-        # 2. Update team possession
-        self.teams[0].possession = (new_player.team == 0) # Gives possession to team 1 if the new player is on team 1
-        self.teams[1].possession = (new_player.team == 1) # Gives possession to team 2 if player is on team 2
+        if hasattr(prev_player, "update_possession"):
+            prev_player.update_possession(False)
 
-        # 3. Update MatchState.possession as a boolean (True if team 0 has it)
-        self.possession = (new_player.team)
+        if isinstance(new_player, int):
+            new_team_index = new_player
+        elif hasattr(new_player, "team"):
+            new_team_index = new_player.team
+            new_player.update_possession(True)
+        elif new_player is None:
+            new_team_index = 1 - self.possession
+        else:
+            raise TypeError("new_player must be a Player instance, team index, or None.")
+
+        self.possession = new_team_index
+        self._sync_possession_flags()
 
     def update_score(self, scoring_team):
-        if scoring_team == self.teams[0]:
-            self.teams[0].score += 1
+        if isinstance(scoring_team, int):
+            team_index = scoring_team
+        elif scoring_team == self.teams[0]:
+            team_index = 0
         elif scoring_team == self.teams[1]:
-            self.teams[1].score += 1
+            team_index = 1
         else:
             raise ValueError(f"A dog named {scoring_team} ran onto the field and scored. He is not a valid team!")
 
+        self.teams[team_index].score += 1
+        self.score[team_index] += 1
+
+    def switch_possession(self):
+        self.update_possession(new_player=1 - self.possession)
+
+    def advance_time(self, seconds):
+        self.time += seconds
+
+    def log_event(self, event_type, **payload):
+        event = {"type": event_type, **payload}
+        self.event_log.append(event)
+        return event

@@ -1,11 +1,44 @@
 teams:
   team1:
+    name: Team 1
     num_players: 20
+    pressing_level: medium
   team2:
+    name: Team 2
     num_players: 20
+    pressing_level: medium
 
-pressing_intensity: 1 # How often players try to get the ball back
-fatigue_thresh: 0.75 # Players will be sidelined after reaching this fatigue level. 
+team:
+  starters: 11
 
+match:
+  regulation_minutes: 90
+  regulation_steps: 90
 
-timesteps: 900 # Soccer/football game is 90 minutes long
+pressing:
+  levels:
+    low: 0.9
+    medium: 1.0
+    high: 1.15
+  turnover_boost: 0.5
+  recovery_boost: 0.3
+
+fatigue:
+  accumulation_rates:
+    low: 0.004
+    medium: 0.006
+    high: 0.009
+  halftime_recovery: 0.18
+  pressing_penalty_slope: 0.5
+  min_effective_pressing: 0.65
+  attacking_penalty_slope: 0.2
+  min_attacking_multiplier: 0.75
+
+engine:
+  base_turnover_probability: 0.12
+
+# Legacy compatibility keys used by earlier stubs.
+pressing_intensity: medium
+fatigue_threshold: 0.75
+fatigue_thresh: 0.75
+timesteps: 90
