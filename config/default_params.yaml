@@ -4,6 +4,8 @@ teams:
   team2:
     num_players: 20
 
-pressing_intensity: 1
+pressing_intensity: 1 # How often players try to get the ball back
+fatigue_thresh: 0.75 # Players will be sidelined after reaching this fatigue level. 
+
 
 timesteps: 900 # Soccer/football game is 90 minutes long

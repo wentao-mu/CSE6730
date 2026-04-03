@@ -1,6 +1,7 @@
 from players import Player
 from teams import Team
 from match_state import MatchState
+import fatigue
 import random
 import utils
 import yaml
@@ -22,6 +23,9 @@ tsteps = config["timesteps"]
 players_team1 = [Player(f"Team1_Player_{i}", team=0, sideline=True) for i in range(num_players_team1)]
 players_team2 = [Player(f"Team2_Player_{i}", team=1, sideline=True) for i in range(num_players_team2)]
 
+print(f"Team 1:\n{players_team1}")
+print(f"Team 2:\nplayers_team2")
+
 # Add players to team
 team1 = Team(players_team1)
 team2 = Team(players_team2)
@@ -40,8 +44,9 @@ for tstep in range(tsteps):
     # 1. Update fatigue of players based on current actions/defensive choices
     for team in mstate.teams:
         for player in team.playing:  # only update fatigue for players on the field
-            player.fatigue += utils.calculate_fatigue(player, pressing_intensity)
-            player.fatigue = min(player.fatigue, 1.0)  # cap fatigue at 1.0
+            delta_fatigue = fatigue.calculate_fatigue(player, pressing_intensity)
+            delta_fatigue = min(delta_fatigue, 1.0)
+            player.update_fatigue(delta_fatigue)  # cap fatigue at 1.0
     
     # 2. Handle substitutions if players are fatigued
     for team in mstate.teams:
@@ -67,4 +72,4 @@ for tstep in range(tsteps):
     mstate.time += time_per_step
 
     # Optional: log match state
-    # utils.log_match_state(mstate)
+    utils.log_match_state(mstate)

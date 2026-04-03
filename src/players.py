@@ -21,3 +21,9 @@ class Player:
     def swap_player(self):
         """Called if the player starts playing or stops playing."""
         self.sideline = not self.sideline
+
+    def update_fatigue(self, delta_fatigue):
+        """Update fatigue. Negative delta corresponds to rest (timeouts, halftime, sideline), 
+        and a positive delta corresponds to playtime, shots, and pressing (trying to get the
+        ball back)."""
+        self.fatigue += delta_fatigue
