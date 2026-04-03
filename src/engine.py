@@ -35,7 +35,7 @@ def run_match_segment(mstate, tsteps_segment, pressing_intensity, config):
                 player.update_fatigue(delta_fatigue)
                 player.fatigue = min(player.fatigue, 1.0)
 
-        # 2. Handle substitutions
+        # 2. Handle substitutions (This will change)
         for team in mstate.teams:
             for player in team.playing:
                 if player.fatigue > config["fatigue_threshold"] and len(team.sidelines) > 0:
@@ -47,9 +47,9 @@ def run_match_segment(mstate, tsteps_segment, pressing_intensity, config):
         # 3. Update match events
         n_presses = pressing.press(mstate)
         for press_step in range(n_presses):
-            offensive_moves = pressing.press_info(mstate)
-            if pressing.should_possession_change(mstate.possession):
-                mstate.update_possession(not mstate.possession)  # flip boolean possession
+            if pressing.should_possession_change(mstate): # Not sure what parameters are needed. mstate is a placeholder
+                prev_player, new_player = pressing.change_possession(mstate) # player who previously had possession, and player who now has possession respectively
+                mstate.update_possession(prev_player, new_player)  # flip boolean possession
 
         scoring_team = mstate.teams[mstate.possession]
         if chance_model.attempt_shot(scoring_team):

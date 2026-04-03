@@ -12,7 +12,7 @@ class Player:
 
     def __init__(self, name, team, sideline, position = None, location=None):
         self.name = name
-        self.team = team
+        self.team = team # Not a team instance
         self.fatigue = 0
         self.position = position
         self.location = location
@@ -27,3 +27,6 @@ class Player:
         and a positive delta corresponds to playtime, shots, and pressing (trying to get the
         ball back)."""
         self.fatigue += delta_fatigue
+
+    def update_possession(self):
+        """Updates the possession of this player. Used by match_state.update(possession)."""

@@ -23,18 +23,26 @@ class MatchState:
         self.possession = kickoff_winner
 
 
-    def update_possession(self):
-        """Changes and updates the team with possession."""
-        if self.possession == 0: # Changing from team 1 to 2
-            self.possession = 1
-            self.teams[1].possession = True
-            self.teams[0].possession = False
-        elif self.possession == 1: # changing from team 2 to 1
-            self.possession = 0
-            self.teams[0].possession = True
-            self.teams[1].possession = False
-        else:
-            raise ValueError("The ball's possession was not in team 1 or 2.")
+    def update_possession(self, prev_player, new_player):
+        """
+        Changes and updates the team with possession based on player possession.
+
+        Parameters
+        ----------
+        prev_player : Player
+            The Player instance that previously had possession of the soccer ball.
+        new_player : Player
+            The Player instance that now has possession of the ball.
+        """
+        prev_player.possession = False
+        new_player.possession = True
+
+        # 2. Update team possession
+        self.teams[0].possession = (new_player.team == 0) # Gives possession to team 1 if the new player is on team 1
+        self.teams[1].possession = (new_player.team == 1) # Gives possession to team 2 if player is on team 2
+
+        # 3. Update MatchState.possession as a boolean (True if team 0 has it)
+        self.possession = (new_player.team)
 
     def update_score(self, scoring_team):
         if scoring_team == self.teams[0]:
