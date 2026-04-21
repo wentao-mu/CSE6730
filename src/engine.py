@@ -9,11 +9,13 @@ try:
     from .match_state import MatchState
     from .players import Player
     from .teams import Team
+    from . import chance_model
     from . import pressing
 except ImportError:  # pragma: no cover - allows direct execution from src/
     from match_state import MatchState
     from players import Player
     from teams import Team
+    import chance_model
     import pressing
 
 
@@ -61,6 +63,18 @@ def build_default_match_state(config):
 
 def default_transition(match_state, config, rng):
     """Simple possession model used until calibrated transitions are integrated."""
+    def zone_for_xg(zone):
+        mapping = {
+            "build_up": "defensive",
+            "midfield": "middle",
+            "final_third": "attacking",
+            "defensive": "defensive",
+            "middle": "middle",
+            "attacking": "attacking",
+        }
+        return mapping.get(zone, "middle")
+
+    attacking_team = match_state.teams[match_state.possession]
     defending_team = match_state.teams[1 - match_state.possession]
     engine_params = config.get("engine", {})
     base_turnover_probability = float(engine_params.get("base_turnover_probability", 0.12))
@@ -78,7 +92,31 @@ def default_transition(match_state, config, rng):
             "to_team": match_state.possession,
         }
 
-    return {"type": "keep_possession", "team": match_state.possession}
+    base_shot_probability = float(engine_params.get("base_shot_probability", 0.08))
+    shot_probability = min(
+        0.8,
+        max(0.0, base_shot_probability * pressing.attacking_success_modifier(attacking_team, config)),
+    )
+
+    if rng.random() < shot_probability:
+        xg_zone = zone_for_xg(match_state.zone)
+        xg = chance_model.xg_by_zone(xg_zone) * pressing.attacking_success_modifier(
+            attacking_team,
+            config,
+        )
+        xg = min(0.95, max(0.0, float(xg)))
+        is_goal = rng.random() < xg
+        if is_goal:
+            match_state.update_score(match_state.possession)
+        return {
+            "type": "shot",
+            "team": match_state.possession,
+            "zone": match_state.zone,
+            "xg": xg,
+            "goal": is_goal,
+        }
+
+    return {"type": "keep_possession", "team": match_state.possession, "zone": match_state.zone}
 
 
 def step(match_state, config, rng=None, transition_callback=None, seconds_per_step=60.0):
