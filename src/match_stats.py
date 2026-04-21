@@ -2,7 +2,6 @@
 
 from collections import Counter, defaultdict
 
-
 class MatchStats:
     def __init__(self, event_log):
         self.event_log = event_log
