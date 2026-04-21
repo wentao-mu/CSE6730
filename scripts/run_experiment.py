@@ -17,15 +17,97 @@ Usage examples:
 """
 
 import argparse
+import copy
 import sys
 import os
+import random
 import time
 import pandas as pd
 
 # allow imports from project root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.engine import run_match
+from src.engine import load_config, run_match
+
+
+def summarize_state(state) -> dict:
+    """Convert MatchState into a flat row used by experiment analysis."""
+    home_shots = 0
+    away_shots = 0
+    home_xg = 0.0
+    away_xg = 0.0
+    possession_samples = 0
+    home_possession_samples = 0
+
+    for event in state.event_log:
+        possession = event.get("possession")
+        if possession in (0, 1):
+            possession_samples += 1
+            if possession == 0:
+                home_possession_samples += 1
+
+        if event.get("type") != "shot":
+            continue
+
+        team_index = event.get("team", possession)
+        if team_index == 0:
+            home_shots += 1
+            home_xg += float(event.get("xg", 0.0) or 0.0)
+        elif team_index == 1:
+            away_shots += 1
+            away_xg += float(event.get("xg", 0.0) or 0.0)
+
+    home_possession = (
+        home_possession_samples / possession_samples if possession_samples else 0.5
+    )
+
+    return {
+        "home_goals": state.score[0],
+        "away_goals": state.score[1],
+        "home_shots": home_shots,
+        "away_shots": away_shots,
+        "home_xg": home_xg,
+        "away_xg": away_xg,
+        "home_possession": home_possession,
+    }
+
+
+def base_experiment_config() -> dict:
+    """Load config from YAML when available; otherwise use built-in defaults."""
+    try:
+        return load_config()
+    except ModuleNotFoundError as exc:
+        if exc.name != "yaml":
+            raise
+
+        # Fallback keeps experiments runnable even when PyYAML is unavailable
+        # in the current interpreter (for example system python3).
+        return {
+            "teams": {
+                "team1": {"name": "Team 1", "num_players": 20, "pressing_level": "medium"},
+                "team2": {"name": "Team 2", "num_players": 20, "pressing_level": "medium"},
+            },
+            "team": {"starters": 11},
+            "match": {"regulation_minutes": 90, "regulation_steps": 90},
+            "pressing": {
+                "levels": {"low": 0.9, "medium": 1.0, "high": 1.15},
+                "turnover_boost": 0.5,
+                "recovery_boost": 0.3,
+            },
+            "fatigue": {
+                "accumulation_rates": {"low": 0.004, "medium": 0.006, "high": 0.009},
+                "halftime_recovery": 0.18,
+                "pressing_penalty_slope": 0.5,
+                "min_effective_pressing": 0.65,
+                "attacking_penalty_slope": 0.2,
+                "min_attacking_multiplier": 0.75,
+            },
+            "engine": {"base_turnover_probability": 0.12},
+            "pressing_intensity": "medium",
+            "fatigue_threshold": 0.75,
+            "fatigue_thresh": 0.75,
+            "timesteps": 90,
+        }
 
 
 def simulate_batch(
@@ -35,15 +117,23 @@ def simulate_batch(
     fatigue_model: str,
 ) -> pd.DataFrame:
     """Run n matches with the given settings and return a DataFrame of summaries."""
+    base_config = base_experiment_config()
     rows = []
     for i in range(n):
-        stats = run_match(
-            home_pressing=home_pressing,
-            away_pressing=away_pressing,
-            fatigue_model=fatigue_model,
-            seed=i,  # reproducible: seed = run index
+        config = copy.deepcopy(base_config)
+        config.setdefault("teams", {}).setdefault("team1", {})[
+            "pressing_level"
+        ] = home_pressing
+        config.setdefault("teams", {}).setdefault("team2", {})[
+            "pressing_level"
+        ] = away_pressing
+        config.setdefault("fatigue", {})["model"] = fatigue_model
+
+        state = run_match(
+            config=config,
+            rng=random.Random(i),  # reproducible: seed = run index
         )
-        summary = stats.summary()
+        summary = summarize_state(state)
         # add experiment metadata
         summary["run"] = i
         summary["home_pressing"] = home_pressing
