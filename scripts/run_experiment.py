@@ -31,7 +31,7 @@ from src.engine import load_config, run_match
 from src.transitions import load_transition_matrix, build_transition_function
 
 
-def summarize_state(state) -> dict:
+def summarize_state(state, config=None) -> dict:
     """Convert MatchState into a flat row used by experiment analysis."""
     home_shots = 0
     away_shots = 0
@@ -39,6 +39,7 @@ def summarize_state(state) -> dict:
     away_xg = 0.0
     possession_samples = 0
     home_possession_samples = 0
+    fatigue_samples = []
 
     for event in state.event_log:
         possession = event.get("possession")
@@ -46,6 +47,10 @@ def summarize_state(state) -> dict:
             possession_samples += 1
             if possession == 0:
                 home_possession_samples += 1
+
+        fatigue = event.get("fatigue")
+        if isinstance(fatigue, list) and len(fatigue) >= 2:
+            fatigue_samples.append(fatigue)
 
         if event.get("type") != "shot":
             continue
@@ -61,8 +66,18 @@ def summarize_state(state) -> dict:
     home_possession = (
         home_possession_samples / possession_samples if possession_samples else 0.5
     )
+    home_avg_fatigue = (
+        sum(sample[0] for sample in fatigue_samples) / len(fatigue_samples)
+        if fatigue_samples
+        else state.teams[0].fatigue
+    )
+    away_avg_fatigue = (
+        sum(sample[1] for sample in fatigue_samples) / len(fatigue_samples)
+        if fatigue_samples
+        else state.teams[1].fatigue
+    )
 
-    return {
+    summary = {
         "home_goals": state.score[0],
         "away_goals": state.score[1],
         "home_shots": home_shots,
@@ -70,7 +85,21 @@ def summarize_state(state) -> dict:
         "home_xg": home_xg,
         "away_xg": away_xg,
         "home_possession": home_possession,
+        "home_final_fatigue": state.teams[0].fatigue,
+        "away_final_fatigue": state.teams[1].fatigue,
+        "home_avg_fatigue": home_avg_fatigue,
+        "away_avg_fatigue": away_avg_fatigue,
     }
+
+    if config is not None:
+        summary.update(
+            {
+                "home_effective_pressing": state.teams[0].effective_pressing(config),
+                "away_effective_pressing": state.teams[1].effective_pressing(config),
+            }
+        )
+
+    return summary
 
 
 def base_experiment_config() -> dict:
@@ -121,8 +150,7 @@ def simulate_batch(
     """Run n matches with the given settings and return a DataFrame of summaries."""
     base_config = base_experiment_config()
     rows = []
-    transition_matrix = load_transition_matrix()
-    transition_fn = build_transition_function(transition_matrix)
+    transition_fn = None
     if use_calibrated_transitions:
         matrix = load_transition_matrix()
         transition_fn = build_transition_function(matrix)
@@ -141,7 +169,7 @@ def simulate_batch(
             rng=random.Random(i), # reproducible: seed = run index
             transition_callback=transition_fn,
         )
-        summary = summarize_state(state)
+        summary = summarize_state(state, config=config)
         # add experiment metadata
         summary["run"] = i
         summary["home_pressing"] = home_pressing
@@ -233,6 +261,8 @@ def main():
         avg_home_xg=("home_xg", "mean"),
         avg_away_xg=("away_xg", "mean"),
         avg_home_poss=("home_possession", "mean"),
+        avg_home_fatigue=("home_final_fatigue", "mean"),
+        avg_away_fatigue=("away_final_fatigue", "mean"),
     )
     print(grouped.round(3).to_string())
 
