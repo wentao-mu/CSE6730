@@ -46,7 +46,7 @@ def accumulation_rate(pressing_level, params=None):
 def fatigue_penalty_multiplier(fatigue_level, params=None):
     """Convert fatigue into a multiplier for pressing effectiveness."""
     fatigue_params = _fatigue_params(params)
-    slope = float(fatigue_params.get("pressing_penalty_slope", 0.5))
+    slope = float(fatigue_params.get("pressing_penalty_slope", 0.25))
     minimum = float(fatigue_params.get("min_effective_pressing", 0.65))
     return clamp(1.0 - slope * fatigue_level, minimum, 1.0)
 

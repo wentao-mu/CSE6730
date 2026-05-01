@@ -84,7 +84,7 @@ class Team:
         pressing_params = (config or {}).get("pressing", {})
         levels = pressing_params.get(
             "levels",
-            {"low": 0.9, "medium": 1.0, "high": 1.15},
+            {"low": 0.7, "medium": 1.0, "high": 1.5},
         )
         base_press = float(levels[self.pressing_level])
         return base_press * fatigue.fatigue_penalty_multiplier(self.fatigue, config)

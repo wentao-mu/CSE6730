@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover - allows direct execution from src/
 def turnover_modifier(defending_team, params=None):
     """Multiplier applied to turnover probabilities created by pressure."""
     pressing_params = (params or {}).get("pressing", {})
-    boost = float(pressing_params.get("turnover_boost", 0.5))
+    boost = float(pressing_params.get("turnover_boost", 1.0))
     effective_press = defending_team.effective_pressing(params)
     return max(0.1, 1.0 + (effective_press - 1.0) * boost)
 
@@ -19,7 +19,7 @@ def turnover_modifier(defending_team, params=None):
 def recovery_modifier(defending_team, params=None):
     """Multiplier applied to ball-recovery events for the pressing team."""
     pressing_params = (params or {}).get("pressing", {})
-    boost = float(pressing_params.get("recovery_boost", 0.3))
+    boost = float(pressing_params.get("recovery_boost", 0.8))
     effective_press = defending_team.effective_pressing(params)
     return max(0.1, 1.0 + (effective_press - 1.0) * boost)
 
