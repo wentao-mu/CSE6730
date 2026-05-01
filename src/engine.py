@@ -100,14 +100,24 @@ def default_transition(match_state, config, rng):
 
     if rng.random() < shot_probability:
         xg_zone = zone_for_xg(match_state.zone)
-        xg = chance_model.xg_by_zone(xg_zone) * pressing.attacking_success_modifier(
+
+        quality_multiplier = chance_model.shot_quality_multiplier(
             attacking_team,
+            defending_team,
             config,
         )
+
+        xg = chance_model.xg_by_zone(
+            xg_zone,
+            quality_multiplier=quality_multiplier,
+        )
+
         xg = min(0.95, max(0.0, float(xg)))
         is_goal = rng.random() < xg
+
         if is_goal:
             match_state.update_score(match_state.possession)
+
         return {
             "type": "shot",
             "team": match_state.possession,
