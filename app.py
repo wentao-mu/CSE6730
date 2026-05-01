@@ -826,11 +826,6 @@ def render_event_level_inspection(st, df: pd.DataFrame) -> None:
         preferred = [column for column in ["minute", "time", "team", "event_type", "type", "zone", "xg", "goal", "possession"] if column in inspect_df.columns]
         remaining = [column for column in event_cols if column not in preferred]
         render_static_table(st, inspect_df[preferred + remaining], max_rows=100)
-    else:
-        st.caption(
-            "Current CSV appears to contain aggregate experiment results only. "
-            "Event-level inspection requires saving event logs from the engine."
-        )
 
 
 def render_reproducibility_notes(st, df: pd.DataFrame, selected_paths: list[Path], detected_columns: list[str]) -> None:
