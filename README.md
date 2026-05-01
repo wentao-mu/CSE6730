@@ -2,9 +2,9 @@
 
 Assesses how pressing intensity and fatigue affect chance creation.
 
-## Member C Deliverable Summary
+## Wentao Mou Deliverable Summary
 
-Member C completed the pressing and fatigue subsystem for the soccer
+Wentao Mou completed the pressing and fatigue subsystem for the soccer
 simulation. The implementation adds three pressing levels (`low`,
 `medium`, `high`) at the team level and models fatigue as a scalar from
 0 to 1 that increases linearly over match steps, with halftime recovery
