@@ -112,12 +112,13 @@ def process_match(events, counts):
         counts[zone]["total"] += 1
 
 
-def load_all_matches(data_dir):
+def load_all_matches(data_dir, limit=None):
     """
-    Load all JSON match files.
+    Load all JSON match files. Truncates if a limit is given.
     """
-    files = list(data_dir.glob("*.json"))
-
+    # files = list(data_dir.glob("*.json"))
+    files = sorted(data_dir.glob("*.json"))[:limit] if limit else list(data_dir.glob("*.json"))
+    
     if not files:
         raise FileNotFoundError(f"No StatsBomb data found in {data_dir}")
 
@@ -163,8 +164,7 @@ def build_transition_matrix(counts):
 
 def main(limit=None):
     counts = defaultdict(lambda: defaultdict(int))
-
-    matches = load_all_matches(DATA_DIR)
+    matches = load_all_matches(DATA_DIR, limit=limit)
 
     if limit:
         matches = matches[:limit]

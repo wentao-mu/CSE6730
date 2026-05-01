@@ -1,0 +1,7 @@
+# Don't include in the repo, but keep on local machine
+data
+experiment_results.csv
+__pycache__
+
+# Don't include virtual environment
+venv*
