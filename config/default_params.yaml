@@ -17,11 +17,12 @@ match:
 
 pressing:
   levels:
-    low: 0.9
+    low: 0.75
     medium: 1.0
-    high: 1.15
-  turnover_boost: 0.5
-  recovery_boost: 0.3
+    high: 1.25
+  turnover_boost: 1.0
+  recovery_boost: 0.8
+  shot_quality_penalty: 0.25
 
 fatigue:
   accumulation_rates:
@@ -29,10 +30,11 @@ fatigue:
     medium: 0.006
     high: 0.009
   halftime_recovery: 0.18
-  pressing_penalty_slope: 0.5
+  pressing_penalty_slope: 0.25
   min_effective_pressing: 0.65
   attacking_penalty_slope: 0.2
   min_attacking_multiplier: 0.75
+  shot_quality_fatigue_penalty: 0.10
 
 engine:
   base_turnover_probability: 0.12
