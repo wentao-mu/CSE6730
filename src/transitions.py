@@ -13,6 +13,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+try:
+    from . import chance_model
+except ImportError:
+    import chance_model
+
 
 ZONE_ORDER = ["build_up", "midfield", "final_third"]
 
@@ -79,7 +84,6 @@ def sample_transition(match_state, config, rng, transition_matrix):
     from .pressing import apply_pressing_modifiers
 
     zone = match_state.zone
-
     if zone not in transition_matrix:
         raise ValueError(f"Zone '{zone}' not found in transition matrix.")
 
@@ -88,7 +92,6 @@ def sample_transition(match_state, config, rng, transition_matrix):
 
     base_probs = transition_matrix[zone]
 
-    # Apply pressing + fatigue adjustments
     adjusted_probs = apply_pressing_modifiers(
         base_probs,
         attacking_team,
@@ -96,17 +99,15 @@ def sample_transition(match_state, config, rng, transition_matrix):
         config,
     )
 
-    # Sample event
     events = list(adjusted_probs.keys())
     probabilities = list(adjusted_probs.values())
-
     event_type = rng.choices(events, probabilities)[0]
 
-    return resolve_event(event_type, match_state)
+    return resolve_event(event_type, match_state, config, rng)
 
 
 
-def resolve_event(event_type, match_state):
+def resolve_event(event_type, match_state, config, rng):
     """
     Convert an abstract event into:
     - state updates
@@ -116,10 +117,7 @@ def resolve_event(event_type, match_state):
     if event_type == "turnover":
         prev_team = match_state.possession
         match_state.switch_possession()
-
-        # After turnover, ball moves backward slightly
         match_state.zone = previous_zone(match_state.zone)
-
         return {
             "type": "turnover",
             "from_team": prev_team,
@@ -129,7 +127,6 @@ def resolve_event(event_type, match_state):
 
     elif event_type == "progress":
         match_state.zone = next_zone(match_state.zone)
-
         return {
             "type": "progress",
             "team": match_state.possession,
@@ -137,10 +134,37 @@ def resolve_event(event_type, match_state):
         }
 
     elif event_type == "shot":
+        attacking_team = match_state.teams[match_state.possession]
+        defending_team = match_state.teams[1 - match_state.possession]
+
+        xg_zone_map = {
+            "build_up": "defensive",
+            "midfield": "middle",
+            "final_third": "attacking",
+        }
+        xg_zone = xg_zone_map.get(match_state.zone, "middle")
+
+        quality_multiplier = chance_model.shot_quality_multiplier(
+            attacking_team,
+            defending_team,
+            config,
+        )
+
+        xg = chance_model.xg_by_zone(
+            xg_zone,
+            quality_multiplier=quality_multiplier,
+        )
+
+        is_goal = rng.random() < xg
+        if is_goal:
+            match_state.update_score(match_state.possession)
+
         return {
             "type": "shot",
             "team": match_state.possession,
             "zone": match_state.zone,
+            "xg": xg,
+            "goal": is_goal,
         }
 
     elif event_type in ("stay", "keep_possession"):

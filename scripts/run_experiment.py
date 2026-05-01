@@ -28,6 +28,7 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.engine import load_config, run_match
+from src.transitions import load_transition_matrix, build_transition_function
 
 
 def summarize_state(state) -> dict:
@@ -115,10 +116,16 @@ def simulate_batch(
     home_pressing: str,
     away_pressing: str,
     fatigue_model: str,
+    use_calibrated_transitions: bool = False,
 ) -> pd.DataFrame:
     """Run n matches with the given settings and return a DataFrame of summaries."""
     base_config = base_experiment_config()
     rows = []
+    transition_matrix = load_transition_matrix()
+    transition_fn = build_transition_function(transition_matrix)
+    if use_calibrated_transitions:
+        matrix = load_transition_matrix()
+        transition_fn = build_transition_function(matrix)
     for i in range(n):
         config = copy.deepcopy(base_config)
         config.setdefault("teams", {}).setdefault("team1", {})[
@@ -131,7 +138,8 @@ def simulate_batch(
 
         state = run_match(
             config=config,
-            rng=random.Random(i),  # reproducible: seed = run index
+            rng=random.Random(i), # reproducible: seed = run index
+            transition_callback=transition_fn,
         )
         summary = summarize_state(state)
         # add experiment metadata
@@ -180,6 +188,11 @@ def main():
         default="output/experiment_results.csv",
         help="Output CSV path (default: output/experiment_results.csv)",
     )
+    parser.add_argument(
+        "--use-calibrated",
+        action="store_true",
+        help="Use calibrated transition probabilities from data/calibration/transitions.json",
+    )
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
@@ -190,7 +203,7 @@ def main():
         for level in ["low", "medium", "high"]:
             print(f"Running {args.n} matches: home={level} vs away=medium ...")
             t0 = time.time()
-            df = simulate_batch(args.n, level, "medium", args.fatigue)
+            df = simulate_batch(args.n, level, "medium", args.fatigue, use_calibrated_transitions=args.use_calibrated)
             elapsed = time.time() - t0
             print(f"  done in {elapsed:.1f}s")
             dfs.append(df)
@@ -202,7 +215,7 @@ def main():
         )
         t0 = time.time()
         results = simulate_batch(
-            args.n, args.home_press, args.away_press, args.fatigue
+            args.n, args.home_press, args.away_press, args.fatigue, use_calibrated_transitions=args.use_calibrated
         )
         elapsed = time.time() - t0
         print(f"  done in {elapsed:.1f}s")
